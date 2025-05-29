@@ -1,0 +1,15 @@
+# For Amazon Linux 2
+sudo yum update -y
+sudo yum install -y docker git
+sudo service docker start
+sudo usermod -a -G docker $USER
+
+# For Ubuntu
+sudo apt update
+sudo apt install -y docker.io git
+sudo systemctl start docker
+sudo systemctl enable docker
+sudo usermod -a -G docker $USER
+
+# SSH Keygen
+ssh-keygen -t ed25519 -C "your_email@example.com"
