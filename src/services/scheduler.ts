@@ -33,8 +33,8 @@ export function setupScheduler(): void {
   );
 
   console.log('✅ Scheduler initialized:');
-  console.log('   📅 Daily notifications: Every day at 8:00 PM IST');
-  console.log('   📊 Weekly summaries: Every Sunday at 10:00 AM IST');
+  console.log('📅 Daily notifications: Every day at 8:00 PM IST');
+  console.log('📊 Weekly summaries: Every Sunday at 10:00 AM IST');
 }
 
 async function sendDailyNotifications(): Promise<void> {
@@ -55,7 +55,7 @@ async function sendDailyNotifications(): Promise<void> {
         console.error(`❌ Failed to send notification to user ${user.telegram_id}:`, error);
         errorCount++;
       }
-      
+
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 
@@ -88,7 +88,7 @@ async function sendWeeklySummaries(): Promise<void> {
             weekEnd,
             JSON.stringify(summary)
           );
-          
+
           await sendWeeklySummaryMessage(user.telegram_id, summary);
           successCount++;
         }
@@ -96,7 +96,7 @@ async function sendWeeklySummaries(): Promise<void> {
         console.error(`❌ Failed to send weekly summary to user ${user.telegram_id}:`, error);
         errorCount++;
       }
-      
+
       await new Promise(resolve => setTimeout(resolve, 200));
     }
 
@@ -124,7 +124,7 @@ interface WeeklySummaryData {
 async function generateWeeklySummary(userId: number, weekStart: Date, weekEnd: Date): Promise<WeeklySummaryData | null> {
   try {
     const habits = await habitQueries.getUserHabits(userId);
-    
+
     if (habits.length === 0) {
       return null;
     }
@@ -135,7 +135,7 @@ async function generateWeeklySummary(userId: number, weekStart: Date, weekEnd: D
 
     for (const habit of habits) {
       const entries = await habitEntryQueries.getHabitEntriesForWeek(habit.id, weekStart, weekEnd);
-      
+
       const completedDays = entries.filter(entry => entry.completed).length;
       const totalDays = 7;
       const completionRate = (completedDays / totalDays) * 100;
@@ -143,19 +143,19 @@ async function generateWeeklySummary(userId: number, weekStart: Date, weekEnd: D
       let streak = 0;
       const today = moment().tz(TIMEZONE);
       let checkDate = moment(today);
-      
+
       for (let i = 0; i < 30; i++) {
         const dateStr = checkDate.format('YYYY-MM-DD');
-        const dayEntry = entries.find(entry => 
+        const dayEntry = entries.find(entry =>
           moment(entry.date).format('YYYY-MM-DD') === dateStr
         );
-        
+
         if (dayEntry && dayEntry.completed) {
           streak++;
         } else {
           break;
         }
-        
+
         checkDate.subtract(1, 'day');
       }
 
@@ -206,12 +206,12 @@ async function sendWeeklySummaryMessage(telegramId: number, summary: WeeklySumma
     }
 
     message += `💡 **Tips for next week:**\n`;
-    
+
     const lowPerformingHabits = summary.habits.filter(h => h.completionRate < 70);
     if (lowPerformingHabits.length > 0) {
       message += `• Focus on: ${lowPerformingHabits.map(h => h.name).join(', ')}\n`;
     }
-    
+
     const highPerformingHabits = summary.habits.filter(h => h.completionRate >= 90);
     if (highPerformingHabits.length > 0) {
       message += `• Keep up the excellent work with: ${highPerformingHabits.map(h => h.name).join(', ')}\n`;

@@ -1,11 +1,12 @@
 import { Bot, CommandContext } from 'grammy';
 import { BotContext, createKeyboard } from './bot';
-import { UserQueries, HabitQueries, HabitEntryQueries } from '../database/queries';
+import { UserQueries, HabitQueries, HabitEntryQueries, WeeklySummaryQueries } from '../database/queries';
 import moment from 'moment-timezone';
 
 let userQueries: UserQueries;
 let habitQueries: HabitQueries;
 let habitEntryQueries: HabitEntryQueries;
+let weeklySummaryQueries: WeeklySummaryQueries;
 
 const TIMEZONE = process.env.TIMEZONE || 'Asia/Kolkata';
 
@@ -13,6 +14,7 @@ export async function setupCommands(bot: Bot<BotContext>): Promise<void> {
   userQueries = new UserQueries();
   habitQueries = new HabitQueries();
   habitEntryQueries = new HabitEntryQueries();
+  weeklySummaryQueries = new WeeklySummaryQueries();
   bot.command('start', handleStart);
   bot.command('help', handleHelp);
   bot.command('habits', handleHabits);
@@ -377,14 +379,88 @@ async function handleNotifications(ctx: CommandContext<BotContext>): Promise<voi
 }
 
 async function handleSummary(ctx: CommandContext<BotContext>): Promise<void> {
-  await ctx.reply(
-    '📊 **Weekly Summary**\n\n' +
-    'Weekly summaries are automatically sent every Sunday at 10 AM IST.\n\n' +
-    'The summary includes:\n' +
-    '• Completion rate for each habit\n' +
-    '• Streak information\n' +
-    '• Progress compared to previous week\n\n' +
-    'Keep tracking your habits daily to get detailed insights!',
-    { parse_mode: 'Markdown' }
-  );
+  const telegramId = ctx.from?.id;
+  if (!telegramId) return;
+
+  try {
+    const user = await userQueries.getUserByTelegramId(telegramId);
+    if (!user) {
+      await ctx.reply('Please use /start first to register.');
+      return;
+    }
+
+    const habits = await habitQueries.getUserHabits(user.id);
+    if (habits.length === 0) {
+      await ctx.reply(
+        'You don\'t have any habits yet! Use /addhabit to create your first habit.',
+        {
+          reply_markup: createKeyboard([
+            { text: '➕ Add First Habit', data: 'add_habit' }
+          ])
+        }
+      );
+      return;
+    }
+
+    // Get current week (Monday to Sunday)
+    const now = moment().tz(TIMEZONE);
+    const weekStart = now.clone().startOf('isoWeek').toDate();
+    const weekEnd = now.clone().endOf('isoWeek').toDate();
+
+    let message = `📊 **Weekly Summary**\n\n`;
+    message += `Week of ${moment(weekStart).format('MMM Do')} - ${moment(weekEnd).format('MMM Do, YYYY')}\n\n`;
+
+    let totalHabits = 0;
+    let totalCompleted = 0;
+
+    for (const habit of habits) {
+      const entries = await habitEntryQueries.getHabitEntriesForWeek(habit.id, weekStart, weekEnd);
+      
+      const completedDays = entries.filter(entry => entry.completed).length;
+      const totalDays = entries.length;
+      const percentage = totalDays > 0 ? Math.round((completedDays / totalDays) * 100) : 0;
+
+      totalHabits += totalDays;
+      totalCompleted += completedDays;
+
+      let statusEmoji = '';
+      if (percentage >= 80) statusEmoji = '🔥';
+      else if (percentage >= 60) statusEmoji = '✅';
+      else if (percentage >= 40) statusEmoji = '⚡';
+      else statusEmoji = '❌';
+
+      message += `${statusEmoji} **${habit.name}**\n`;
+      message += `   ${completedDays}/${totalDays} days (${percentage}%)\n\n`;
+    }
+
+    const overallPercentage = totalHabits > 0 ? Math.round((totalCompleted / totalHabits) * 100) : 0;
+    
+    message += `📈 **Overall Progress**\n`;
+    message += `${totalCompleted}/${totalHabits} total completions (${overallPercentage}%)\n\n`;
+
+    if (overallPercentage >= 80) {
+      message += `🎉 **Excellent!** You're crushing your habits!\n`;
+    } else if (overallPercentage >= 60) {
+      message += `👍 **Good job!** Keep up the momentum!\n`;
+    } else if (overallPercentage >= 40) {
+      message += `💪 **Making progress!** Stay consistent!\n`;
+    } else {
+      message += `🌱 **Every step counts!** Don't give up!\n`;
+    }
+
+    message += `\n💡 *Weekly summaries are also sent automatically every Sunday at 10 AM IST.*`;
+
+    await ctx.reply(message, {
+      parse_mode: 'Markdown',
+      reply_markup: createKeyboard([
+        { text: '📋 View My Habits', data: 'view_habits' },
+        { text: '📝 Check In Today', data: 'checkin' },
+        { text: '🏠 Main Menu', data: 'main_menu' }
+      ])
+    });
+
+  } catch (error) {
+    console.error('Error in summary command:', error);
+    await ctx.reply('Sorry, something went wrong. Please try again.');
+  }
 }
